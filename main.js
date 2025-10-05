@@ -106,13 +106,13 @@ rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/empty_ware
 // Parameters for GUI
 const params = {
     // Original
-    numCoins: 20,
+    numCoins: 8,
     radius: 4.5,
     coinRadius: 0.9,
     coinHeight: 0.05,
     rotationSpeed: 1.0,
     spinSpeed: 2.0,
-    spinVariation: 0,
+    spinVariation: 0.2,
     ellipseScale: 1.4,
     // Material (MeshPhysicalMaterial)
     color: 0x9370DB, // Lavender theme coin color
@@ -153,11 +153,7 @@ let previousCameraPosition = new THREE.Vector3();
 function createCoins() {
     // Adjust radius on mobile for better visibility, but less aggressive
     if (isMobile) {
-        params.radius = Math.min(params.radius, 2.0); // Slightly larger than before
-        params.coinGroupY = 1; // Lower the coins a bit
-        coinGroup.position.y = params.coinGroupY;
-        params.numCoins = Math.min(params.numCoins, 8);
-        params.spinVariation = Math.min(params.spinVariation, 0); // Slightly more variation
+        params.radius = Math.min(params.radius, 4.0); // Slightly larger than before
     }
 
     // Clear existing coins
@@ -288,6 +284,9 @@ const sceneFolder = gui.addFolder('Scene');
 sceneFolder.add(params, 'cameraOrbitSpeed', 0, 0.002);
 sceneFolder.add(params, 'coinGroupY', -5, 5).onChange(() => {
     coinGroup.position.y = params.coinGroupY;
+    camera.lookAt(0, params.coinGroupY, 0);
+    controls.target.set(0, params.coinGroupY, 0);
+    controls.update();
 });
 sceneFolder.add(params, 'enableOrbitControls').onChange((value) => {
     controls.enabled = value;
@@ -300,9 +299,10 @@ sceneFolder.addColor(params, 'bgColor').onChange(() => {
 });
 sceneFolder.open();
 
-
+// Close GUI on mobile for better UX
+if (isMobile) {
     gui.close();
-
+}
 
 // Enable auto-rotate on OrbitControls if autoOrbit is true (but only if controls enabled)
 controls.autoRotate = params.autoOrbit && params.enableOrbitControls;
@@ -312,13 +312,13 @@ controls.autoRotateSpeed = params.cameraOrbitSpeed * 1000; // Adjust for control
 if (isMobile) {
     camera.position.set(0, 1.5, 12);
     params.coinGroupY = 1.5; // Raise coinGroup on mobile to center
-    coinGroup.position.y = params.coinGroupY;
 } else {
     camera.position.set(0, 0, 8);
     params.coinGroupY = 0;
-    coinGroup.position.y = params.coinGroupY;
 }
-camera.lookAt(0, 0, 0);
+coinGroup.position.y = params.coinGroupY;
+camera.lookAt(0, params.coinGroupY, 0);
+controls.target.set(0, params.coinGroupY, 0);
 
 // Animation loop
 function animate() {
@@ -393,8 +393,9 @@ window.addEventListener('resize', () => {
             coinGroup.position.y = params.coinGroupY;
             gui.open();
         }
-        camera.lookAt(0, 0, 0);
-        controls.target.set(0, 0, 0);
+        camera.lookAt(0, params.coinGroupY, 0);
+        controls.target.set(0, params.coinGroupY, 0);
+        controls.update();
     }
 
     camera.aspect = window.innerWidth / window.innerHeight;
