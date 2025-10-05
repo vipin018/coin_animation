@@ -1,0 +1,274 @@
+// script.js
+import * as THREE from 'three';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import GUI from 'lil-gui';
+
+// Scene setup
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xE6E6FA); // Lavender background
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 0, 8);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ 
+    antialias: true, 
+    canvas: document.getElementById('canvas')
+});
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1;
+
+// OrbitControls
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.screenSpacePanning = false;
+controls.minDistance = 2;
+controls.maxDistance = 20;
+
+// Camera animation setup
+const targetPos = new THREE.Vector3(0, 8, 0);
+let isAnimatingCamera = false;
+let animationStartPos = new THREE.Vector3();
+let animationStartTime = 0;
+const animationDuration = 2000; // ms
+
+// Wheel event for triggering camera animation
+renderer.domElement.addEventListener('wheel', (event) => {
+    if (!isAnimatingCamera) {
+        isAnimatingCamera = true;
+        animationStartPos.copy(camera.position);
+        animationStartTime = performance.now();
+    }
+    // Optional: event.preventDefault(); to prevent default scroll behavior
+});
+
+// Lighting for metallic sheen (lavender theme)
+const ambientLight = new THREE.AmbientLight(0xDDA0DD, 0.5);
+scene.add(ambientLight);
+
+const directionalLight = new THREE.DirectionalLight(0xE6E6FA, 1);
+directionalLight.position.set(5, 10, 5);
+directionalLight.castShadow = true;
+directionalLight.shadow.mapSize.width = 2048;
+directionalLight.shadow.mapSize.height = 2048;
+scene.add(directionalLight);
+
+// Rim lights (lavender tinted)
+const rimLight1 = new THREE.PointLight(0xE6E6FA, 0.4, 20);
+rimLight1.position.set(-5, 5, -5);
+scene.add(rimLight1);
+const rimLight2 = new THREE.PointLight(0xE6E6FA, 0.4, 20);
+rimLight2.position.set(5, 5, 5);
+scene.add(rimLight2);
+
+// Environment map
+const rgbeLoader = new RGBELoader();
+rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/empty_warehouse_01_1k.hdr', function (texture) {
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    // scene.environment = texture;
+    // scene.background = texture; // Optional: use as background too
+});
+
+// Parameters for GUI
+const params = {
+    // Original
+    numCoins: 8,
+    radius: 4.5,
+    coinRadius: 0.9,
+    coinHeight: 0.05,
+    rotationSpeed: 1.0,
+    spinSpeed: 2.0,
+    spinVariation: 0.2,
+    ellipseScale: 1.4,
+    metalness: 0.8,
+    roughness: 0.3,
+    color: 0x9370DB, // Lavender theme coin color
+    // Lighting
+    rimLightIntensity: 0.4,
+    envMapIntensity: 1.0,
+    // Coin Detailing
+    sizeVariation: 0.2,
+    tiltVariation: 0.1,
+    // Animation
+    pulseAmplitude: 0.1,
+    wobbleIntensity: 0.05,
+    // Scene
+    cameraOrbitSpeed: 0.0005,
+    autoOrbit: true, // Toggle for auto-orbit
+    // Colors
+    bgColor: 0xE6E6FA, // Lavender background
+    // Performance (removed post-processing)
+};
+
+// Group for coins
+const coinGroup = new THREE.Group();
+scene.add(coinGroup);
+
+let coins = [];
+let time = 0;
+let previousCameraPosition = new THREE.Vector3();
+
+function createCoins() {
+    // Clear existing coins
+    coins.forEach(coin => coinGroup.remove(coin));
+    coins = [];
+
+    const geometry = new THREE.CylinderGeometry(params.coinRadius, params.coinRadius, params.coinHeight, 64); // More segments for bevel-like
+    const material = new THREE.MeshStandardMaterial({
+        color: params.color,
+        metalness: params.metalness,
+        roughness: params.roughness,
+        envMapIntensity: params.envMapIntensity
+    });
+
+    for (let i = 0; i < params.numCoins; i++) {
+        const stackGroup = new THREE.Group();
+        const angle = (i / params.numCoins) * Math.PI * 2;
+        stackGroup.position.x = Math.cos(angle) * params.radius;
+        stackGroup.position.z = Math.sin(angle) * params.radius;
+        stackGroup.position.y = 0;
+
+        // Main coin
+        const coin = new THREE.Mesh(geometry, material.clone());
+        coin.castShadow = true;
+        coin.receiveShadow = true;
+        coin.rotation.y = angle + Math.PI / 2;
+        coin.userData.spinSpeed = params.spinSpeed * (1 + (Math.random() - 0.5) * params.spinVariation);
+        coin.userData.baseRoughness = params.roughness;
+
+        // Size and tilt variation
+        const sizeVar = 0.9 + Math.random() * params.sizeVariation;
+        coin.scale.set(params.ellipseScale * sizeVar, 1 * sizeVar, 1 * sizeVar);
+        coin.rotation.z = (Math.random() - 0.5) * params.tiltVariation;
+
+        stackGroup.add(coin);
+
+        coinGroup.add(stackGroup);
+        coins.push(stackGroup); // Treat stack as "coin" for animation
+    }
+}
+
+// Initialize coins
+createCoins();
+
+// GUI setup with folders
+const gui = new GUI();
+const coinFolder = gui.addFolder('Coin Settings');
+coinFolder.add(params, 'numCoins', 8, 12, 1).onChange(createCoins);
+coinFolder.add(params, 'radius', 4, 8).onChange(createCoins);
+coinFolder.add(params, 'coinRadius', 0.4, 1.0).onChange(createCoins);
+coinFolder.add(params, 'coinHeight', 0.01, 0.05).onChange(createCoins);
+coinFolder.add(params, 'ellipseScale', 1.0, 2.0).onChange(createCoins);
+coinFolder.add(params, 'sizeVariation', 0, 0.5).onChange(createCoins);
+coinFolder.add(params, 'tiltVariation', 0, 0.3).onChange(createCoins);
+coinFolder.open();
+
+const animationFolder = gui.addFolder('Animation');
+animationFolder.add(params, 'rotationSpeed', 0, 3);
+animationFolder.add(params, 'spinSpeed', 0, 5).onChange(createCoins);
+animationFolder.add(params, 'spinVariation', 0, 0.5).onChange(createCoins);
+animationFolder.add(params, 'pulseAmplitude', 0, 0.5);
+animationFolder.add(params, 'wobbleIntensity', 0, 0.2);
+animationFolder.open();
+
+const materialFolder = gui.addFolder('Material');
+materialFolder.add(params, 'metalness', 0, 1).onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.metalness = params.metalness; }));
+});
+materialFolder.add(params, 'roughness', 0, 1).onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.roughness = params.roughness; }));
+    // Update baseRoughness for dynamic
+    coins.forEach(c => { if (c.children[0] && c.children[0].userData) c.children[0].userData.baseRoughness = params.roughness; });
+});
+materialFolder.addColor(params, 'color').onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.color.setHex(params.color); }));
+});
+materialFolder.add(params, 'envMapIntensity', 0, 2).onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.envMapIntensity = params.envMapIntensity; }));
+});
+materialFolder.open();
+
+const lightingFolder = gui.addFolder('Lighting');
+lightingFolder.add(params, 'rimLightIntensity', 0, 1).onChange(() => {
+    rimLight1.intensity = params.rimLightIntensity;
+    rimLight2.intensity = params.rimLightIntensity;
+});
+lightingFolder.open();
+
+const sceneFolder = gui.addFolder('Scene');
+sceneFolder.add(params, 'cameraOrbitSpeed', 0, 0.002);
+sceneFolder.add(params, 'autoOrbit').onChange((value) => {
+    controls.autoRotate = value;
+});
+sceneFolder.addColor(params, 'bgColor').onChange(() => {
+    scene.background.setHex(params.bgColor);
+});
+sceneFolder.open();
+
+// Enable auto-rotate on OrbitControls if autoOrbit is true
+controls.autoRotate = params.autoOrbit;
+controls.autoRotateSpeed = params.cameraOrbitSpeed * 1000; // Adjust for controls
+
+// Animation loop
+function animate() {
+    requestAnimationFrame(animate);
+    time += 0.01;
+
+    // Camera animation logic
+    if (isAnimatingCamera) {
+        controls.enabled = false;
+        const elapsed = performance.now() - animationStartTime;
+        let progress = Math.min(elapsed / animationDuration, 1);
+        // Ease in-out quadratic
+        const easedProgress = progress < 0.5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress;
+        camera.position.lerpVectors(animationStartPos, targetPos, easedProgress);
+        camera.lookAt(0, 0, 0);
+        if (progress >= 1) {
+            isAnimatingCamera = false;
+            controls.enabled = true;
+        }
+    } else {
+        controls.enabled = true;
+    }
+
+    // Pulsing group rotation (independent of camera)
+    coinGroup.rotation.y = Math.sin(time * params.rotationSpeed * 0.1) * params.pulseAmplitude + time * params.rotationSpeed * 0.001;
+
+    // Spin and wobble each coin/stack
+    coins.forEach((stack, i) => {
+        const mainCoin = stack.children[0]; // Assume first is main
+        mainCoin.rotation.x += mainCoin.userData.spinSpeed * 0.01;
+        mainCoin.rotation.z += Math.sin(mainCoin.rotation.x * 0.5) * params.wobbleIntensity;
+
+        // Dynamic roughness
+        mainCoin.material.roughness = mainCoin.userData.baseRoughness + Math.sin(time + i) * 0.05;
+    });
+
+    // Update controls (handles auto-rotate if enabled)
+    controls.update();
+
+    // Log camera position changes (throttled to avoid spam)
+    const currentPosition = camera.position.clone();
+    if (currentPosition.distanceTo(previousCameraPosition) > 0.01) { // Threshold for change detection
+        console.log('Camera position changed to:', currentPosition);
+        previousCameraPosition.copy(currentPosition);
+    }
+
+    // Render with renderer
+    renderer.render(scene, camera);
+}
+
+animate();
+
+// Handle resize
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    controls.update();
+}); 

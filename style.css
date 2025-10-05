@@ -1,0 +1,9 @@
+/* styles.css */
+body { 
+    margin: 0; 
+    overflow: hidden; 
+    background: #1f1f1f; 
+}
+#canvas { 
+    display: block; 
+}
