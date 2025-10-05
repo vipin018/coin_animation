@@ -1,7 +1,7 @@
 // script.js
 import * as THREE from 'three';
-import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { RGBELoader } from 'three/examples/jsm/loaders/RGBELoader.js';
 import GUI from 'lil-gui';
 
 // Scene setup
@@ -29,19 +29,21 @@ controls.dampingFactor = 0.05;
 controls.screenSpacePanning = false;
 controls.minDistance = 2;
 controls.maxDistance = 20;
+controls.enableZoom = false;
 
-// Camera animation setup
-const targetPos = new THREE.Vector3(0, 8, 0);
-let isAnimatingCamera = false;
-let animationStartPos = new THREE.Vector3();
+
+// Coin rotation animation setup (steady camera)
+const targetRotationX = -Math.PI / 2;
+let isAnimatingCoins = false;
+let animationStartRotationX = 0;
 let animationStartTime = 0;
 const animationDuration = 2000; // ms
 
-// Wheel event for triggering camera animation
+// Wheel event for triggering coin rotation animation
 renderer.domElement.addEventListener('wheel', (event) => {
-    if (!isAnimatingCamera) {
-        isAnimatingCamera = true;
-        animationStartPos.copy(camera.position);
+    if (!isAnimatingCoins) {
+        isAnimatingCoins = true;
+        animationStartRotationX = coinGroup.rotation.x;
         animationStartTime = performance.now();
     }
     // Optional: event.preventDefault(); to prevent default scroll behavior
@@ -58,20 +60,12 @@ directionalLight.shadow.mapSize.width = 2048;
 directionalLight.shadow.mapSize.height = 2048;
 scene.add(directionalLight);
 
-// Rim lights (lavender tinted)
-const rimLight1 = new THREE.PointLight(0xE6E6FA, 0.4, 20);
-rimLight1.position.set(-5, 5, -5);
-scene.add(rimLight1);
-const rimLight2 = new THREE.PointLight(0xE6E6FA, 0.4, 20);
-rimLight2.position.set(5, 5, 5);
-scene.add(rimLight2);
-
-// Environment map
+// HDRI environment
 const rgbeLoader = new RGBELoader();
 rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/empty_warehouse_01_1k.hdr', function (texture) {
     texture.mapping = THREE.EquirectangularReflectionMapping;
-    // scene.environment = texture;
-    // scene.background = texture; // Optional: use as background too
+    scene.environment = texture;
+    // scene.background = texture; // Use as background
 });
 
 // Parameters for GUI
@@ -85,12 +79,19 @@ const params = {
     spinSpeed: 2.0,
     spinVariation: 0.2,
     ellipseScale: 1.4,
+    // Material (MeshPhysicalMaterial)
+    color: 0x9370DB, // Lavender theme coin color
     metalness: 0.8,
     roughness: 0.3,
-    color: 0x9370DB, // Lavender theme coin color
-    // Lighting
-    rimLightIntensity: 0.4,
     envMapIntensity: 1.0,
+    clearcoat: 0.5,
+    clearcoatRoughness: 0.1,
+    reflectivity: 0.9,
+    transmission: 0.0,
+    thickness: 0.5,
+    ior: 1.5,
+    opacity: 1.0,
+    transparent: false,
     // Coin Detailing
     sizeVariation: 0.2,
     tiltVariation: 0.1,
@@ -102,7 +103,6 @@ const params = {
     autoOrbit: true, // Toggle for auto-orbit
     // Colors
     bgColor: 0xE6E6FA, // Lavender background
-    // Performance (removed post-processing)
 };
 
 // Group for coins
@@ -119,11 +119,19 @@ function createCoins() {
     coins = [];
 
     const geometry = new THREE.CylinderGeometry(params.coinRadius, params.coinRadius, params.coinHeight, 64); // More segments for bevel-like
-    const material = new THREE.MeshStandardMaterial({
+    const material = new THREE.MeshPhysicalMaterial({
         color: params.color,
         metalness: params.metalness,
         roughness: params.roughness,
-        envMapIntensity: params.envMapIntensity
+        envMapIntensity: params.envMapIntensity,
+        clearcoat: params.clearcoat,
+        clearcoatRoughness: params.clearcoatRoughness,
+        reflectivity: params.reflectivity,
+        transmission: params.transmission,
+        thickness: params.thickness,
+        ior: params.ior,
+        opacity: params.opacity,
+        transparent: params.transparent || params.transmission > 0 || params.opacity < 1
     });
 
     for (let i = 0; i < params.numCoins; i++) {
@@ -177,6 +185,9 @@ animationFolder.add(params, 'wobbleIntensity', 0, 0.2);
 animationFolder.open();
 
 const materialFolder = gui.addFolder('Material');
+materialFolder.addColor(params, 'color').onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.color.setHex(params.color); }));
+});
 materialFolder.add(params, 'metalness', 0, 1).onChange(() => {
     coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.metalness = params.metalness; }));
 });
@@ -185,20 +196,47 @@ materialFolder.add(params, 'roughness', 0, 1).onChange(() => {
     // Update baseRoughness for dynamic
     coins.forEach(c => { if (c.children[0] && c.children[0].userData) c.children[0].userData.baseRoughness = params.roughness; });
 });
-materialFolder.addColor(params, 'color').onChange(() => {
-    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.color.setHex(params.color); }));
-});
+
 materialFolder.add(params, 'envMapIntensity', 0, 2).onChange(() => {
     coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.envMapIntensity = params.envMapIntensity; }));
 });
-materialFolder.open();
-
-const lightingFolder = gui.addFolder('Lighting');
-lightingFolder.add(params, 'rimLightIntensity', 0, 1).onChange(() => {
-    rimLight1.intensity = params.rimLightIntensity;
-    rimLight2.intensity = params.rimLightIntensity;
+materialFolder.add(params, 'clearcoat', 0, 1).onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.clearcoat = params.clearcoat; }));
 });
-lightingFolder.open();
+materialFolder.add(params, 'clearcoatRoughness', 0, 1).onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.clearcoatRoughness = params.clearcoatRoughness; }));
+});
+materialFolder.add(params, 'reflectivity', 0, 1).onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.reflectivity = params.reflectivity; }));
+});
+materialFolder.add(params, 'transmission', 0, 1).onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { 
+        if (child.material) { 
+            child.material.transmission = params.transmission; 
+            child.material.transparent = params.transparent || params.transmission > 0 || params.opacity < 1;
+        } 
+    }));
+});
+materialFolder.add(params, 'thickness', 0, 1).onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.thickness = params.thickness; }));
+});
+materialFolder.add(params, 'ior', 1.0, 2.5).onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { if (child.material) child.material.ior = params.ior; }));
+});
+materialFolder.add(params, 'opacity', 0, 1).onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { 
+        if (child.material) { 
+            child.material.opacity = params.opacity; 
+            child.material.transparent = params.transparent || params.transmission > 0 || params.opacity < 1;
+        } 
+    }));
+});
+materialFolder.add(params, 'transparent').onChange(() => {
+    coins.forEach(c => c.children.forEach(child => { 
+        if (child.material) child.material.transparent = params.transparent; 
+    }));
+});
+materialFolder.open();
 
 const sceneFolder = gui.addFolder('Scene');
 sceneFolder.add(params, 'cameraOrbitSpeed', 0, 0.002);
@@ -219,21 +257,16 @@ function animate() {
     requestAnimationFrame(animate);
     time += 0.01;
 
-    // Camera animation logic
-    if (isAnimatingCamera) {
-        controls.enabled = false;
+    // Coin rotation animation logic (steady camera)
+    if (isAnimatingCoins) {
         const elapsed = performance.now() - animationStartTime;
         let progress = Math.min(elapsed / animationDuration, 1);
         // Ease in-out quadratic
         const easedProgress = progress < 0.5 ? 2 * progress * progress : -1 + (4 - 2 * progress) * progress;
-        camera.position.lerpVectors(animationStartPos, targetPos, easedProgress);
-        camera.lookAt(0, 0, 0);
+        coinGroup.rotation.x = THREE.MathUtils.lerp(animationStartRotationX, targetRotationX, easedProgress);
         if (progress >= 1) {
-            isAnimatingCamera = false;
-            controls.enabled = true;
+            isAnimatingCoins = false;
         }
-    } else {
-        controls.enabled = true;
     }
 
     // Pulsing group rotation (independent of camera)
@@ -252,7 +285,7 @@ function animate() {
     // Update controls (handles auto-rotate if enabled)
     controls.update();
 
-    // Log camera position changes (throttled to avoid spam)
+    // Log camera position changes (throttled to avoid spam) - but camera is steady, so maybe remove or keep for orbit
     const currentPosition = camera.position.clone();
     if (currentPosition.distanceTo(previousCameraPosition) > 0.01) { // Threshold for change detection
         console.log('Camera position changed to:', currentPosition);
@@ -271,4 +304,4 @@ window.addEventListener('resize', () => {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     controls.update();
-}); 
+});
