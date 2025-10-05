@@ -22,6 +22,9 @@ renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
 
+// Detect mobile for responsiveness
+let isMobile = window.innerWidth < 768;
+
 // OrbitControls
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -29,8 +32,13 @@ controls.dampingFactor = 0.05;
 controls.screenSpacePanning = false;
 controls.minDistance = 2;
 controls.maxDistance = 20;
-controls.enableZoom = false;
-
+controls.enableZoom = isMobile; // Enable zoom on mobile for better interaction
+if (isMobile) {
+    controls.enableRotate = true; // Keep rotate enabled, but we'll handle swipe interference
+    controls.enablePan = false; // Disable pan to reduce interference
+}
+controls.enabled = false; // Disabled by default
+controls.target.set(0, 0, 0); // Ensure target is center
 
 // Coin rotation animation setup (steady camera)
 const targetRotationX = -Math.PI / 2;
@@ -39,7 +47,7 @@ let animationStartRotationX = 0;
 let animationStartTime = 0;
 const animationDuration = 2000; // ms
 
-// Wheel event for triggering coin rotation animation
+// Wheel event for triggering coin rotation animation (desktop)
 renderer.domElement.addEventListener('wheel', (event) => {
     if (!isAnimatingCoins) {
         isAnimatingCoins = true;
@@ -48,6 +56,33 @@ renderer.domElement.addEventListener('wheel', (event) => {
     }
     // Optional: event.preventDefault(); to prevent default scroll behavior
 });
+
+// Touch events for triggering coin rotation animation (mobile)
+let touchStartX = 0;
+let touchStartY = 0;
+renderer.domElement.addEventListener('touchstart', (event) => {
+    if (event.touches.length === 1) { // Single touch
+        touchStartX = event.touches[0].clientX;
+        touchStartY = event.touches[0].clientY;
+    }
+}, { passive: true });
+
+renderer.domElement.addEventListener('touchmove', (event) => {
+    if (!isMobile || event.touches.length !== 1 || isAnimatingCoins) return;
+    const touchX = event.touches[0].clientX;
+    const touchY = event.touches[0].clientY;
+    const deltaX = Math.abs(touchX - touchStartX);
+    const deltaY = Math.abs(touchY - touchStartY);
+    if (deltaY > deltaX && deltaY > 50) { // Vertical swipe threshold, prioritize vertical over horizontal
+        event.preventDefault(); // Prevent OrbitControls from handling this swipe
+        if (!isAnimatingCoins) {
+            isAnimatingCoins = true;
+            animationStartRotationX = coinGroup.rotation.x;
+            animationStartTime = performance.now();
+        }
+        touchStartY = touchY; // Reset Y for continuous swipe if needed
+    }
+}, { passive: false }); // Allow preventDefault
 
 // Lighting for metallic sheen (lavender theme)
 const ambientLight = new THREE.AmbientLight(0xDDA0DD, 0.5);
@@ -71,13 +106,13 @@ rgbeLoader.load('https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/empty_ware
 // Parameters for GUI
 const params = {
     // Original
-    numCoins: 8,
+    numCoins: 20,
     radius: 4.5,
     coinRadius: 0.9,
     coinHeight: 0.05,
     rotationSpeed: 1.0,
     spinSpeed: 2.0,
-    spinVariation: 0.2,
+    spinVariation: 0,
     ellipseScale: 1.4,
     // Material (MeshPhysicalMaterial)
     color: 0x9370DB, // Lavender theme coin color
@@ -100,7 +135,9 @@ const params = {
     wobbleIntensity: 0.05,
     // Scene
     cameraOrbitSpeed: 0.0005,
-    autoOrbit: true, // Toggle for auto-orbit
+    autoOrbit: false, // Disabled by default
+    enableOrbitControls: false, // New toggle for enabling OrbitControls
+    coinGroupY: 0, // New param for coinGroup y position
     // Colors
     bgColor: 0xE6E6FA, // Lavender background
 };
@@ -114,6 +151,15 @@ let time = 0;
 let previousCameraPosition = new THREE.Vector3();
 
 function createCoins() {
+    // Adjust radius on mobile for better visibility, but less aggressive
+    if (isMobile) {
+        params.radius = Math.min(params.radius, 2.0); // Slightly larger than before
+        params.coinGroupY = 1; // Lower the coins a bit
+        coinGroup.position.y = params.coinGroupY;
+        params.numCoins = Math.min(params.numCoins, 8);
+        params.spinVariation = Math.min(params.spinVariation, 0); // Slightly more variation
+    }
+
     // Clear existing coins
     coins.forEach(coin => coinGroup.remove(coin));
     coins = [];
@@ -240,6 +286,12 @@ materialFolder.open();
 
 const sceneFolder = gui.addFolder('Scene');
 sceneFolder.add(params, 'cameraOrbitSpeed', 0, 0.002);
+sceneFolder.add(params, 'coinGroupY', -5, 5).onChange(() => {
+    coinGroup.position.y = params.coinGroupY;
+});
+sceneFolder.add(params, 'enableOrbitControls').onChange((value) => {
+    controls.enabled = value;
+});
 sceneFolder.add(params, 'autoOrbit').onChange((value) => {
     controls.autoRotate = value;
 });
@@ -248,9 +300,25 @@ sceneFolder.addColor(params, 'bgColor').onChange(() => {
 });
 sceneFolder.open();
 
-// Enable auto-rotate on OrbitControls if autoOrbit is true
-controls.autoRotate = params.autoOrbit;
+
+    gui.close();
+
+
+// Enable auto-rotate on OrbitControls if autoOrbit is true (but only if controls enabled)
+controls.autoRotate = params.autoOrbit && params.enableOrbitControls;
 controls.autoRotateSpeed = params.cameraOrbitSpeed * 1000; // Adjust for controls
+
+// Adjust initial camera position on mobile (even farther to zoom out more, with slight elevation for better centering)
+if (isMobile) {
+    camera.position.set(0, 1.5, 12);
+    params.coinGroupY = 1.5; // Raise coinGroup on mobile to center
+    coinGroup.position.y = params.coinGroupY;
+} else {
+    camera.position.set(0, 0, 8);
+    params.coinGroupY = 0;
+    coinGroup.position.y = params.coinGroupY;
+}
+camera.lookAt(0, 0, 0);
 
 // Animation loop
 function animate() {
@@ -300,6 +368,35 @@ animate();
 
 // Handle resize
 window.addEventListener('resize', () => {
+    const newIsMobile = window.innerWidth < 768;
+    if (newIsMobile !== isMobile) {
+        isMobile = newIsMobile;
+        // Re-init responsive settings on orientation change
+        controls.enableZoom = isMobile;
+        if (isMobile) {
+            controls.enablePan = false;
+            params.enableOrbitControls = false;
+            controls.enabled = false;
+            params.autoOrbit = false;
+            controls.autoRotate = false;
+            camera.position.set(0, 1.5, 12);
+            params.coinGroupY = 1.5;
+            coinGroup.position.y = params.coinGroupY;
+            gui.close();
+            createCoins(); // Recreate with adjusted radius
+        } else {
+            controls.enablePan = true;
+            params.enableOrbitControls = false;
+            controls.enabled = false;
+            camera.position.set(0, 0, 8);
+            params.coinGroupY = 0;
+            coinGroup.position.y = params.coinGroupY;
+            gui.open();
+        }
+        camera.lookAt(0, 0, 0);
+        controls.target.set(0, 0, 0);
+    }
+
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
