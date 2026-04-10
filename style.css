@@ -1,63 +1,37 @@
-/* styles.css */
 body {
   margin: 0;
   overflow: hidden;
   transition: background 0.8s ease;
 }
+
 body.theme-coral {
   background: linear-gradient(135deg, #ffb7a2 0%, #ff8a75 100%);
 }
 body.theme-monochrome {
-  background: radial-gradient(circle, #5a5a5a 0%, #1a1a1a 100%);
+  background: radial-gradient(circle, #333 0%, #111 100%);
 }
+
 #theme-toggle {
   position: fixed;
-  top: 25px;
-  right: 25px;
+  top: 30px;
+  right: 30px;
   z-index: 1000;
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0);
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   cursor: pointer;
+  padding: 10px;
+  border-radius: 50%;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-  outline: none;
+  transition: all 0.4s ease;
+  color: rgba(255, 255, 255, 0.5);
 }
+
 #theme-toggle:hover {
-  transform: scale(1.1);
-  background: rgba(255, 255, 255, 0);
+  color: white;
+  border-color: rgba(255, 255, 255, 0.8);
+  background: rgba(255, 255, 255, 0.05);
 }
+
 #canvas {
   display: block;
-  background: transparent;
-}
-#navbar {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  /* background: rgba(139, 69, 19, 0.163); Lavender theme-inspired brown for contrast */
-  color: rgb(0, 0, 0);
-  padding: 10px 0;
-  text-align: center;
-  z-index: 100;
-}
-#navbar nav ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  justify-content: center;
-}
-#navbar nav ul li {
-  margin: 0 20px;
-}
-#navbar nav ul li a {
-  color: rgb(0, 0, 0);
-  text-decoration: none;
-  font-family: Arial, sans-serif;
-  font-size: 16px;
 }
